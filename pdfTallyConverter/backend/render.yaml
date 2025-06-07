@@ -3,7 +3,7 @@ services:
     name: pdf-tally-converter-api
     env: python
     buildCommand: |
-      apt-get update && apt-get install -y tesseract-ocr libgl1-mesa-glx libglib2.0-0
+      sudo apt-get update && sudo apt-get install -y tesseract-ocr libgl1-mesa-glx libglib2.0-0
       pip install -r requirements.txt
     startCommand: python main.py
     envVars:
@@ -11,4 +11,6 @@ services:
         value: 3.9.0
       - key: PORT
         value: 8000
+      - key: PYTHONUNBUFFERED
+        value: "true"
     autoDeploy: true 

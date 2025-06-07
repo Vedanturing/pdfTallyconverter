@@ -1,6 +1,8 @@
-from fastapi import FastAPI, UploadFile, HTTPException, File
+from fastapi import FastAPI, UploadFile, HTTPException, File, Request
 from fastapi.responses import JSONResponse, FileResponse
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import HTMLResponse
+from fastapi.middleware.gzip import GZipMiddleware
 import os
 import shutil
 import uuid
@@ -21,6 +23,7 @@ import asyncio
 from concurrent.futures import ProcessPoolExecutor
 import logging
 import sys
+import traceback
 
 # Configure logging
 logging.basicConfig(
@@ -40,37 +43,104 @@ app = FastAPI(
     redoc_url="/redoc"
 )
 
+# Add GZip compression
+app.add_middleware(GZipMiddleware, minimum_size=1000)
+
 # CORS middleware configuration
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "HEAD"],
     allow_headers=["*"],
+    expose_headers=["*"]
 )
 
-@app.get("/")
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    logger.info(f"Incoming request: {request.method} {request.url}")
+    try:
+        response = await call_next(request)
+        logger.info(f"Request completed: {response.status_code}")
+        return response
+    except Exception as e:
+        logger.error(f"Request failed: {str(e)}")
+        logger.error(traceback.format_exc())
+        return JSONResponse(
+            status_code=500,
+            content={"detail": "Internal server error", "error": str(e)}
+        )
+
+@app.get("/", response_class=HTMLResponse)
 async def root():
     logger.info("Root endpoint accessed")
-    return {
-        "message": "PDF Tally Converter API",
-        "version": "1.0.0",
-        "status": "running",
-        "endpoints": {
-            "docs": "/docs",
-            "redoc": "/redoc",
-            "upload": "/upload",
-            "convert": "/convert/{file_id}",
-            "download": "/download/{filename}",
-            "save_edits": "/api/save-edits",
-            "download_file": "/api/download/{file_id}/{format}"
-        }
-    }
+    return """
+    <html>
+        <head>
+            <title>PDF Tally Converter API</title>
+            <style>
+                body {
+                    font-family: Arial, sans-serif;
+                    max-width: 800px;
+                    margin: 0 auto;
+                    padding: 20px;
+                    line-height: 1.6;
+                }
+                .endpoint {
+                    background: #f4f4f4;
+                    padding: 10px;
+                    margin: 10px 0;
+                    border-radius: 4px;
+                }
+            </style>
+        </head>
+        <body>
+            <h1>PDF Tally Converter API</h1>
+            <p>Version: 1.0.0</p>
+            <p>Status: Running</p>
+            
+            <h2>Available Endpoints:</h2>
+            <div class="endpoint">/docs - Interactive API documentation</div>
+            <div class="endpoint">/redoc - Alternative API documentation</div>
+            <div class="endpoint">/upload - Upload files</div>
+            <div class="endpoint">/convert/{file_id} - Convert uploaded files</div>
+            <div class="endpoint">/download/{filename} - Download converted files</div>
+            <div class="endpoint">/api/save-edits - Save table edits</div>
+            <div class="endpoint">/api/download/{file_id}/{format} - Download in specific format</div>
+            
+            <h2>Health Status:</h2>
+            <div class="endpoint">/health - Check API health</div>
+        </body>
+    </html>
+    """
 
 @app.get("/health")
 async def health_check():
     logger.info("Health check endpoint accessed")
-    return {"status": "healthy", "timestamp": datetime.now().isoformat()}
+    try:
+        # Check if upload directory exists and is writable
+        os.makedirs(UPLOAD_DIR, exist_ok=True)
+        test_file = os.path.join(UPLOAD_DIR, "test.txt")
+        with open(test_file, "w") as f:
+            f.write("test")
+        os.remove(test_file)
+        
+        return {
+            "status": "healthy",
+            "timestamp": datetime.now().isoformat(),
+            "environment": {
+                "python_version": sys.version,
+                "upload_dir": os.path.abspath(UPLOAD_DIR),
+                "working_dir": os.getcwd()
+            }
+        }
+    except Exception as e:
+        logger.error(f"Health check failed: {str(e)}")
+        return {
+            "status": "unhealthy",
+            "error": str(e),
+            "timestamp": datetime.now().isoformat()
+        }
 
 # Create necessary directories
 UPLOAD_DIR = "uploads"
