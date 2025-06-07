@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useRef } from 'react';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { TableData, TableCell, EditHistory } from '../../types/DataValidation';
 import { toast } from 'react-hot-toast';
 import axios from 'axios';
@@ -13,7 +13,9 @@ import {
   ExclamationCircleIcon,
   CheckCircleIcon,
   PencilIcon,
-  DocumentDuplicateIcon
+  DocumentDuplicateIcon,
+  ArrowPathIcon,
+  XMarkIcon
 } from '@heroicons/react/24/outline';
 
 interface Props {
@@ -39,7 +41,7 @@ interface ValidationRules {
   };
 }
 
-export default function DataValidationPanel({ initialData, fileId }: Props) {
+const DataValidationPanel: React.FC<Props> = ({ initialData, fileId }) => {
   const [data, setData] = useState<TableData>(initialData);
   const [history, setHistory] = useState<EditHistory[]>([]);
   const [historyIndex, setHistoryIndex] = useState(-1);
@@ -52,6 +54,10 @@ export default function DataValidationPanel({ initialData, fileId }: Props) {
   
   // Track original data for diff view
   const originalData = useRef(initialData);
+
+  useEffect(() => {
+    setData(initialData);
+  }, [initialData]);
 
   const validateData = useCallback(() => {
     const errors: ValidationError[] = [];
@@ -352,6 +358,11 @@ export default function DataValidationPanel({ initialData, fileId }: Props) {
     }
   }, [history, historyIndex]);
 
+  const handleShowDiff = (edit: EditHistory) => {
+    setSelectedError(null);
+    setShowDiffModal(true);
+  };
+
   return (
     <div className="p-4 max-w-full">
       <div className="flex justify-between items-center mb-4">
@@ -590,6 +601,7 @@ export default function DataValidationPanel({ initialData, fileId }: Props) {
         onStatusChange={handleStatusChange}
         validationErrors={validationErrors}
         selectedError={selectedError}
+        onShowDiff={handleShowDiff}
       />
 
       {showDiffModal && (
@@ -601,4 +613,6 @@ export default function DataValidationPanel({ initialData, fileId }: Props) {
       )}
     </div>
   );
-} 
+};
+
+export default DataValidationPanel; 

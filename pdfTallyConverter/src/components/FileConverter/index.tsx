@@ -2,7 +2,8 @@ import React, { useState } from 'react';
 import axios from 'axios';
 import toast, { Toaster } from 'react-hot-toast';
 import { ArrowDownTrayIcon } from '@heroicons/react/24/outline';
-import { TableData, TableCell } from '../../types/DataValidation';
+import { TableData, TableCell, TableRow } from '../../types/DataValidation';
+import { v4 as uuidv4 } from 'uuid';
 
 interface ConversionResult {
   status: string;
@@ -36,6 +37,8 @@ const FileConverter: React.FC<FileConverterProps> = ({
   const [tablePreview, setTablePreview] = useState<TablePreview | null>(null);
   const [convertedFiles, setConvertedFiles] = useState<ConversionResult['converted_files'] | null>(null);
   const [conversionResult, setConversionResult] = useState<ConversionResult | null>(null);
+  const [converted, setConverted] = useState(false);
+  const [tableData, setTableData] = useState<TableData | null>(null);
 
   const formatDataForValidation = (headers: string[], rows: string[][]): TableData => {
     return {
@@ -63,88 +66,66 @@ const FileConverter: React.FC<FileConverterProps> = ({
     };
   };
 
-  const handleConvert = async () => {
+  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = event.target.files;
+    if (files && files.length > 0) {
+      setFile(files[0]);
+      setConverted(false);
+    }
+  };
+
+  const convertToTable = async () => {
+    if (!file) return;
+
     setIsConverting(true);
-    setProgress(0);
-    setConversionResult(null);
-    
-    const progressInterval = setInterval(() => {
-      setProgress(prev => {
-        if (prev >= 90) return prev;
-        return prev + 10;
-      });
-    }, 500);
+    const formData = new FormData();
+    formData.append('file', file);
 
     try {
-      // First upload the file
-      const formData = new FormData();
-      formData.append('file', file);
-      
-      const uploadResponse = await axios.post('http://localhost:8000/upload', formData, {
+      const response = await axios.post<ConversionResult>('/api/convert', formData, {
         headers: {
           'Content-Type': 'multipart/form-data',
-        }
+        },
       });
 
-      if (uploadResponse.data.status !== 'success') {
-        throw new Error(uploadResponse.data.message || 'Upload failed');
-      }
-
-      const fileId = uploadResponse.data.file_id;
-
-      // Then convert the file
-      const response = await axios.post<ConversionResult>(
-        `http://localhost:8000/convert/${fileId}`
-      );
-
-      if (response.data.status === 'success') {
-        setProgress(100);
-        setConvertedFiles(response.data.converted_files);
-        
-        // Fetch preview data (first few rows) from CSV
-        if (response.data.converted_files.csv) {
-          const previewResponse = await axios.get(
-            `http://localhost:8000${response.data.converted_files.csv}`,
-            { responseType: 'text' }
-          );
-          
-          const rows = previewResponse.data
-            .split('\n')
-            .map((row: string) => row.split(','))
-            .filter((row: string[]) => row.length > 1);
-          
-          if (rows.length > 0) {
-            const headers = rows[0];
-            const dataRows = rows.slice(1, 6); // Show first 5 rows
-            setTablePreview({
-              headers,
-              rows: dataRows
-            });
-
-            // Format data for validation
-            const validationData = formatDataForValidation(headers, dataRows);
-            const result = {
-              ...response.data,
-              validationData
-            };
-            setConversionResult(result);
-            onConversionComplete(result);
+      const { headers, rows } = response.data;
+      const tableRows: TableRow[] = rows.map((row: any) => {
+        const tableRow: TableRow = {
+          id: {
+            value: uuidv4(),
+            isEdited: false,
+            metadata: {
+              status: 'original'
+            }
           }
-        }
-        
-        toast.success('File converted successfully!');
-      } else {
-        throw new Error(response.data.message || 'Conversion failed');
-      }
-    } catch (error: any) {
-      setProgress(0);
-      toast.error(
-        error.response?.data?.message || 
-        error.message ||
-        'Error converting file. Please try again.'
-      );
+        };
+
+        headers.forEach((header: string) => {
+          tableRow[header] = {
+            value: String(row[header] || ''),
+            isEdited: false,
+            metadata: {
+              status: 'original',
+              confidence: 1.0
+            }
+          };
+        });
+
+        return tableRow;
+      });
+
+      const newTableData: TableData = {
+        headers,
+        rows: tableRows
+      };
+
+      setTableData(newTableData);
+      setConverted(true);
+      toast.success('File converted successfully!');
+    } catch (error) {
+      console.error('Error converting file:', error);
+      toast.error('Error converting file. Please try again.');
     } finally {
-      clearInterval(progressInterval);
       setIsConverting(false);
     }
   };
@@ -185,20 +166,33 @@ const FileConverter: React.FC<FileConverterProps> = ({
       
       {/* Convert Button and Progress Bar */}
       <div className="space-y-4">
-        <div className="flex justify-center">
+        <div className="flex items-center space-x-4">
+          <input
+            type="file"
+            accept=".pdf"
+            onChange={handleFileChange}
+            className="file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-violet-50 file:text-violet-700 hover:file:bg-violet-100"
+          />
           <button
-            onClick={handleConvert}
-            disabled={isConverting}
-            className={`
-              px-6 py-2 rounded-lg font-medium text-white
-              ${isConverting 
-                ? 'bg-blue-400 cursor-not-allowed' 
-                : 'bg-blue-600 hover:bg-blue-700'
-              }
-              transition-colors duration-200
-            `}
+            onClick={convertToTable}
+            disabled={!file || isConverting}
+            className={`inline-flex items-center px-4 py-2 rounded ${
+              !file || isConverting
+                ? 'bg-gray-300 cursor-not-allowed'
+                : 'bg-blue-500 hover:bg-blue-600 text-white'
+            }`}
           >
-            {isConverting ? 'Converting...' : 'Convert File'}
+            {isConverting ? (
+              <>
+                <ArrowDownTrayIcon className="animate-bounce h-5 w-5 mr-2" />
+                Converting...
+              </>
+            ) : (
+              <>
+                <ArrowDownTrayIcon className="h-5 w-5 mr-2" />
+                Convert to Table
+              </>
+            )}
           </button>
         </div>
 
@@ -213,14 +207,14 @@ const FileConverter: React.FC<FileConverterProps> = ({
       </div>
 
       {/* Preview Table */}
-      {tablePreview && (
+      {converted && tableData && (
         <div className="mt-8">
-          <h3 className="text-lg font-semibold mb-4">Preview (First 5 rows)</h3>
+          <h2 className="text-xl font-bold mb-4">Converted Table</h2>
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>
-                  {tablePreview.headers.map((header, index) => (
+                  {tableData.headers.map((header: string, index: number) => (
                     <th
                       key={index}
                       className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
@@ -231,14 +225,14 @@ const FileConverter: React.FC<FileConverterProps> = ({
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {tablePreview.rows.map((row, rowIndex) => (
-                  <tr key={rowIndex}>
-                    {row.map((cell, cellIndex) => (
+                {tableData.rows.map((row: TableRow) => (
+                  <tr key={row.id.value}>
+                    {tableData.headers.map((header: string) => (
                       <td
-                        key={cellIndex}
+                        key={`${row.id.value}-${header}`}
                         className="px-6 py-4 whitespace-nowrap text-sm text-gray-500"
                       >
-                        {cell}
+                        {row[header]?.value || ''}
                       </td>
                     ))}
                   </tr>

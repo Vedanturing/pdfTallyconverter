@@ -6,12 +6,14 @@ interface FilePreviewProps {
   file: File;
   metadata?: FileMetadata;
   className?: string;
+  previewUrl: string;
 }
 
 export const FilePreview: React.FC<FilePreviewProps> = ({
   file,
   metadata,
-  className = ''
+  className = '',
+  previewUrl
 }) => {
   const [preview, setPreview] = useState<string>('');
   const [currentPage, setCurrentPage] = useState(1);

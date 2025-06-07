@@ -1,18 +1,17 @@
 export interface CellMetadata {
-  error?: boolean;
+  status?: 'original' | 'edited' | 'corrected' | 'ignored' | 'needs-review';
   confidence?: number;
-  status?: 'corrected' | 'ignored' | 'needs-review' | 'original';
-  originalValue?: any;
 }
 
 export interface TableCell {
-  value: any;
-  metadata: CellMetadata;
+  value: string;
+  isEdited: boolean;
+  metadata?: CellMetadata;
 }
 
 export interface TableRow {
+  id: TableCell;
   [key: string]: TableCell;
-  id: TableCell; // Ensure each row has an ID
 }
 
 export interface TableData {
@@ -21,11 +20,27 @@ export interface TableData {
 }
 
 export interface EditHistory {
-  timestamp: number;
+  timestamp: string;
   rowId: string;
   columnKey: string;
-  oldValue: any;
-  newValue: any;
+  oldValue: string;
+  newValue: string;
+}
+
+export interface ValidationError {
+  rowId: string;
+  columnKey: string;
+  message: string;
+}
+
+export interface ConversionResult {
+  headers: string[];
+  rows: {
+    [key: string]: string;
+  }[];
+  validationData?: {
+    errors: ValidationError[];
+  };
 }
 
 export interface SavePayload {

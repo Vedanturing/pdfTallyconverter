@@ -1,6 +1,6 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
-import { resolve } from 'path';
+import path from 'path';
 
 export default defineConfig({
   plugins: [react()],
@@ -9,7 +9,7 @@ export default defineConfig({
   },
   resolve: {
     alias: {
-      'pdfjs-dist': resolve(__dirname, 'node_modules/pdfjs-dist/legacy/build/pdf')
+      '@': path.resolve(__dirname, './src')
     }
   },
   build: {
@@ -18,10 +18,9 @@ export default defineConfig({
     sourcemap: true,
     rollupOptions: {
       input: {
-        main: resolve(__dirname, 'index.html'),
-        pdfWorker: resolve(__dirname, 'node_modules/pdfjs-dist/build/pdf.worker.min.js')
+        main: path.resolve(__dirname, 'index.html')
       }
     }
   },
-  base: '/pdf-converter/'
+  base: '/pdfTallyConverter/'
 }); 
