@@ -1,0 +1,10 @@
+services:
+  - type: web
+    name: pdf-tally-converter-api
+    env: python
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.9.0
+      - key: PORT
+        value: 8000
+    healthCheckPath: /health 
