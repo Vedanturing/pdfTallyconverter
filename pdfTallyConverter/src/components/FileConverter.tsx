@@ -3,6 +3,7 @@ import axios from 'axios';
 import toast, { Toaster } from 'react-hot-toast';
 import { ArrowDownTrayIcon } from '@heroicons/react/24/outline';
 import { TableData, TableCell } from '../types/DataValidation';
+import { API_URL } from '../config';
 
 interface ConversionResult {
   status: string;
@@ -78,7 +79,7 @@ const FileConverter: React.FC<FileConverterProps> = ({
       const formData = new FormData();
       formData.append('file', file);
       
-      const uploadResponse = await axios.post('http://localhost:8000/upload', formData, {
+      const uploadResponse = await axios.post(`${API_URL}/upload`, formData, {
         headers: {
           'Content-Type': 'multipart/form-data',
         }
@@ -92,7 +93,7 @@ const FileConverter: React.FC<FileConverterProps> = ({
 
       // Then convert the file
       const response = await axios.post<ConversionResult>(
-        `http://localhost:8000/convert/${fileId}`
+        `${API_URL}/convert/${fileId}`
       );
 
       if (response.data.status === 'success') {
@@ -103,7 +104,7 @@ const FileConverter: React.FC<FileConverterProps> = ({
         // Fetch preview data (first few rows) from CSV
         if (response.data.converted_files.csv) {
           const previewResponse = await axios.get(
-            `http://localhost:8000${response.data.converted_files.csv}`,
+            `${API_URL}${response.data.converted_files.csv}`,
             { responseType: 'text' }
           );
           
@@ -155,7 +156,7 @@ const FileConverter: React.FC<FileConverterProps> = ({
     
     try {
       const response = await axios.get(
-        `http://localhost:8000${convertedFiles[format]}`,
+        `${API_URL}${convertedFiles[format]}`,
         { responseType: 'blob' }
       );
       

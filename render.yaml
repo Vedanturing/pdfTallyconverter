@@ -7,4 +7,11 @@ services:
         value: 3.9.0
       - key: PORT
         value: 8000
+      - key: PYTHONUNBUFFERED
+        value: "true"
+    buildCommand: |
+      cd pdfTallyConverter/backend
+      sudo apt-get update && sudo apt-get install -y tesseract-ocr libgl1-mesa-glx libglib2.0-0
+      pip install -r requirements.txt
+    startCommand: cd pdfTallyConverter/backend && uvicorn main:app --host 0.0.0.0 --port $PORT --workers 4 --no-use-uvloop
     healthCheckPath: /health 

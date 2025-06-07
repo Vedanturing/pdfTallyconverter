@@ -13,11 +13,15 @@ export default defineConfig({
     }
   },
   build: {
+    outDir: 'dist',
+    assetsDir: 'assets',
+    sourcemap: true,
     rollupOptions: {
       input: {
         main: resolve(__dirname, 'index.html'),
         pdfWorker: resolve(__dirname, 'node_modules/pdfjs-dist/build/pdf.worker.min.js')
       }
     }
-  }
+  },
+  base: '/pdf-converter/'
 }); 

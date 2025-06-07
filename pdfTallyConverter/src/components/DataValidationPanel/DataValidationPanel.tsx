@@ -1,6 +1,8 @@
 import React, { useState, useCallback, useRef } from 'react';
 import { TableData, TableCell, EditHistory } from '../../types/DataValidation';
 import { toast } from 'react-hot-toast';
+import axios from 'axios';
+import { API_URL } from '../../config';
 import EditableTable from './EditableTable';
 import DiffModal from './DiffModal';
 import ExportButtons from './ExportButtons';
@@ -267,51 +269,42 @@ export default function DataValidationPanel({ initialData, fileId }: Props) {
 
   const handleSave = async () => {
     try {
-      const response = await fetch('/api/save-edits', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          fileId,
-          originalData: originalData.current,
-          modifiedData: data,
-          editHistory: history
-        })
+      const response = await axios.post(`${API_URL}/api/save-edits`, {
+        fileId,
+        originalData: originalData.current,
+        modifiedData: data,
+        editHistory: history
       });
 
-      if (!response.ok) throw new Error('Failed to save changes');
-
-      const result = await response.json();
-      toast.success('Changes saved successfully');
-      return result;
-    } catch (error) {
-      toast.error('Failed to save changes');
-      console.error('Save error:', error);
+      if (response.data.status === 'success') {
+        toast.success('Changes saved successfully');
+      } else {
+        throw new Error(response.data.message || 'Failed to save changes');
+      }
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to save changes');
     }
   };
 
   const handleDownload = async (format: string) => {
     try {
-      // First save the current changes
-      await handleSave();
+      const response = await axios.get(
+        `${API_URL}/api/download/${fileId}/${format}`,
+        { responseType: 'blob' }
+      );
       
-      const response = await fetch(`http://localhost:8000/api/download/${fileId}/${format}`);
-      if (!response.ok) throw new Error(`Failed to download ${format} file`);
-      
-      const blob = await response.blob();
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `validated_data.${format}`;
-      document.body.appendChild(a);
-      a.click();
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `validated_data.${format}`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
       window.URL.revokeObjectURL(url);
       
-      toast.success(`Downloaded validated data as ${format.toUpperCase()}`);
+      toast.success(`Downloaded ${format.toUpperCase()} successfully`);
     } catch (error) {
-      toast.error(`Failed to download ${format} file`);
-      console.error('Download error:', error);
+      toast.error(`Failed to download ${format.toUpperCase()}`);
     }
   };
 

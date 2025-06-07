@@ -13,6 +13,4 @@ numpy
 aiofiles
 python-dotenv
 gunicorn
-httptools
-uvloop
-requests 
+httptools 
