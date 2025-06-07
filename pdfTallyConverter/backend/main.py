@@ -31,6 +31,22 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+@app.get("/")
+async def root():
+    return {
+        "message": "PDF Tally Converter API",
+        "version": "1.0.0",
+        "endpoints": {
+            "docs": "/docs",
+            "redoc": "/redoc",
+            "upload": "/upload",
+            "convert": "/convert/{file_id}",
+            "download": "/download/{filename}",
+            "save_edits": "/api/save-edits",
+            "download_file": "/api/download/{file_id}/{format}"
+        }
+    }
+
 # Create necessary directories
 UPLOAD_DIR = "uploads"
 CONVERTED_DIR = "converted"
@@ -402,4 +418,5 @@ async def download_file(file_id: str, format: str):
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000) 
+    port = int(os.environ.get("PORT", 8000))
+    uvicorn.run(app, host="0.0.0.0", port=port, workers=4) 
