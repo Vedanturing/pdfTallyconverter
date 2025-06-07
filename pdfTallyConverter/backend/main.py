@@ -33,7 +33,11 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-app = FastAPI()
+app = FastAPI(
+    title="PDF Tally Converter API",
+    description="API for converting PDF files",
+    version="1.0.0"
+)
 
 # Add GZip compression
 app.add_middleware(GZipMiddleware, minimum_size=1000)
@@ -62,22 +66,51 @@ async def log_requests(request: Request, call_next):
             content={"detail": "Internal server error", "error": str(e)}
         )
 
+@app.get("/test")
+async def test():
+    """Test endpoint to verify the API is working"""
+    return {"message": "API is working!"}
+
+@app.get("/debug")
+async def debug(request: Request):
+    """Debug endpoint to show environment information"""
+    return {
+        "cwd": os.getcwd(),
+        "files_in_cwd": os.listdir(),
+        "python_path": sys.path,
+        "env_vars": dict(os.environ),
+        "request_url": str(request.url),
+        "request_headers": dict(request.headers)
+    }
+
 @app.get("/")
 async def root():
+    """Root endpoint"""
     logger.info("Root endpoint accessed")
-    return JSONResponse({
+    return {
         "message": "PDF Tally Converter API",
         "status": "running",
-        "timestamp": datetime.now().isoformat()
-    })
+        "timestamp": datetime.now().isoformat(),
+        "available_endpoints": [
+            "/",
+            "/test",
+            "/debug",
+            "/health"
+        ]
+    }
 
 @app.get("/health")
 async def health_check():
+    """Health check endpoint"""
     logger.info("Health check endpoint accessed")
-    return JSONResponse({
+    return {
         "status": "healthy",
-        "timestamp": datetime.now().isoformat()
-    })
+        "timestamp": datetime.now().isoformat(),
+        "environment": {
+            "cwd": os.getcwd(),
+            "python_version": sys.version
+        }
+    }
 
 # Create necessary directories
 UPLOAD_DIR = "uploads"
