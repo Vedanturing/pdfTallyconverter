@@ -19,8 +19,26 @@ import json
 from pydantic import BaseModel
 import asyncio
 from concurrent.futures import ProcessPoolExecutor
+import logging
+import sys
 
-app = FastAPI()
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler(sys.stdout)
+    ]
+)
+logger = logging.getLogger(__name__)
+
+app = FastAPI(
+    title="PDF Tally Converter API",
+    description="API for converting PDF and image files to various formats",
+    version="1.0.0",
+    docs_url="/docs",
+    redoc_url="/redoc"
+)
 
 # CORS middleware configuration
 app.add_middleware(
@@ -33,9 +51,11 @@ app.add_middleware(
 
 @app.get("/")
 async def root():
+    logger.info("Root endpoint accessed")
     return {
         "message": "PDF Tally Converter API",
         "version": "1.0.0",
+        "status": "running",
         "endpoints": {
             "docs": "/docs",
             "redoc": "/redoc",
@@ -46,6 +66,11 @@ async def root():
             "download_file": "/api/download/{file_id}/{format}"
         }
     }
+
+@app.get("/health")
+async def health_check():
+    logger.info("Health check endpoint accessed")
+    return {"status": "healthy", "timestamp": datetime.now().isoformat()}
 
 # Create necessary directories
 UPLOAD_DIR = "uploads"
