@@ -1,6 +1,56 @@
 # PDF Tally Converter Backend
 
-FastAPI backend for handling PDF and image file uploads with metadata extraction.
+This is the backend service for the PDF Tally Converter application.
+
+## Deploying to Render
+
+1. Go to [Render Dashboard](https://dashboard.render.com)
+2. Click on "New +" and select "Web Service"
+3. Connect your GitHub repository
+4. Configure the following settings:
+   - Name: `pdf-tally-converter-api` (or your preferred name)
+   - Environment: `Python`
+   - Region: Choose the closest to your users
+   - Branch: `main`
+   - Root Directory: `pdfTallyConverter/backend`
+   - Build Command: `pip install -r requirements.txt`
+   - Start Command: `gunicorn -w 4 -k uvicorn.workers.UvicornWorker main:app`
+   - Instance Type: Choose based on your needs (Start with "Free" for testing)
+
+5. Environment Variables to set:
+   ```
+   PORT=8000
+   PYTHON_VERSION=3.9.0
+   ```
+
+6. Click "Create Web Service"
+
+## Important Notes
+
+- The free tier will spin down after 15 minutes of inactivity
+- The first request after spin down may take a few seconds
+- For production, consider using a paid tier for better performance
+- Make sure to set up any additional environment variables your app needs
+
+## API Documentation
+
+Once deployed, you can access the API documentation at:
+- Swagger UI: `https://your-render-url/docs`
+- ReDoc: `https://your-render-url/redoc`
+
+## Local Development
+
+1. Install dependencies:
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+2. Run the development server:
+   ```bash
+   uvicorn main:app --reload
+   ```
+
+The API will be available at `http://localhost:8000`
 
 ## Features
 

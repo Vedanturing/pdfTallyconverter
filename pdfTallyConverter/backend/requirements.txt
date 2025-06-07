@@ -10,4 +10,8 @@ openpyxl
 pytesseract
 opencv-python
 numpy
-aiofiles 
+aiofiles
+python-dotenv
+gunicorn
+httptools
+uvloop 
