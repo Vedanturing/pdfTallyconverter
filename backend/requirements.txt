@@ -1,0 +1,16 @@
+fastapi
+uvicorn
+python-multipart
+Pillow
+PyPDF2
+python-magic
+pdfplumber
+pandas
+openpyxl
+pytesseract
+opencv-python
+numpy
+aiofiles
+python-dotenv
+gunicorn
+httptools 
