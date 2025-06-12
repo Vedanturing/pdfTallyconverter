@@ -1,3 +1,87 @@
 @tailwind base;
 @tailwind components;
-@tailwind utilities; 
+@tailwind utilities;
+
+:root {
+  --primary-color: #4f46e5;
+  --primary-hover: #4338ca;
+  --secondary-color: #10b981;
+  --secondary-hover: #059669;
+  --background: #f8fafc;
+  --card-bg: #ffffff;
+}
+
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background-color: var(--background);
+  color: #1f2937;
+}
+
+.file-drop-zone {
+  border: 2px dashed #e2e8f0;
+  border-radius: 1rem;
+  padding: 2.5rem;
+  text-align: center;
+  transition: all 0.3s ease-in-out;
+  background-color: var(--card-bg);
+  box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1);
+}
+
+.file-drop-zone:hover {
+  border-color: var(--primary-color);
+  box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+}
+
+.file-drop-zone.drag-active {
+  border-color: var(--primary-color);
+  background-color: #eff6ff;
+  transform: scale(1.02);
+}
+
+/* Button styles */
+.btn-primary {
+  @apply bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 
+         transition-all duration-200 ease-in-out shadow-sm hover:shadow-md;
+}
+
+.btn-secondary {
+  @apply bg-emerald-600 text-white px-4 py-2 rounded-lg hover:bg-emerald-700 
+         transition-all duration-200 ease-in-out shadow-sm hover:shadow-md;
+}
+
+/* Card styles */
+.card {
+  @apply bg-white rounded-xl shadow-sm hover:shadow-md transition-shadow duration-200;
+}
+
+/* Input styles */
+.input {
+  @apply border-gray-300 focus:ring-indigo-500 focus:border-indigo-500 
+         block w-full rounded-md shadow-sm transition-all duration-200;
+}
+
+/* Table styles */
+table {
+  @apply min-w-full divide-y divide-gray-200;
+}
+
+th {
+  @apply px-6 py-3 bg-gray-50 text-left text-xs font-medium text-gray-500 uppercase tracking-wider;
+}
+
+td {
+  @apply px-6 py-4 whitespace-nowrap text-sm text-gray-900;
+}
+
+tr:nth-child(even) {
+  @apply bg-gray-50;
+}
+
+tr:hover {
+  @apply bg-gray-100;
+} 

@@ -1,210 +1,192 @@
-import React, { useCallback, useState, useRef } from 'react';
+import React, { useCallback, useState } from 'react';
 import { useDropzone } from 'react-dropzone';
-import { v4 as uuidv4 } from 'uuid';
-import * as pdfjsLib from 'pdfjs-dist';
-import { UploadFile, FileMetadata } from '../types/file';
-import { uploadFile } from '../utils/api';
+import axios from 'axios';
+import { API_URL } from '../config';
+import {
+  ArrowUpTrayIcon,
+  DocumentIcon,
+  XMarkIcon,
+  ArrowPathIcon,
+} from '@heroicons/react/24/outline';
+import toast from 'react-hot-toast';
+import { useNavigate } from 'react-router-dom';
 
-// Initialize PDF.js worker
-pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
+interface FileUploaderProps {}
 
-interface FileUploaderProps {
-  onUploadComplete?: (files: FileMetadata[]) => void;
-  maxFiles?: number;
-}
+const FileUploader: React.FC<FileUploaderProps> = () => {
+  const [uploadProgress, setUploadProgress] = useState<{ [key: string]: number }>(
+    {}
+  );
+  const [uploadedFiles, setUploadedFiles] = useState<File[]>([]);
+  const [uploading, setUploading] = useState(false);
+  const navigate = useNavigate();
 
-const formatFileSize = (bytes: number): string => {
-  if (bytes === 0) return '0 Bytes';
-  const k = 1024;
-  const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-};
-
-export const FileUploader: React.FC<FileUploaderProps> = ({
-  onUploadComplete,
-  maxFiles = 3
-}) => {
-  const [files, setFiles] = useState<UploadFile[]>([]);
-  const uploadingRef = useRef(false);
-
-  const onDrop = useCallback(async (acceptedFiles: File[]) => {
-    const newFiles = acceptedFiles.slice(0, maxFiles - files.length).map(file => ({
-      id: uuidv4(),
-      file,
-      status: 'pending' as const,
-      progress: 0,
-      uploadedAt: new Date()
-    }));
-
-    setFiles(prev => [...prev, ...newFiles]);
-  }, [files.length, maxFiles]);
+  const onDrop = useCallback((acceptedFiles: File[]) => {
+    setUploadedFiles((prev) => [...prev, ...acceptedFiles]);
+  }, []);
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
     accept: {
       'application/pdf': ['.pdf'],
-      'image/*': ['.jpg', '.jpeg', '.png']
-    },
-    maxFiles: maxFiles - files.length,
-    disabled: files.length >= maxFiles
+      'image/*': ['.png', '.jpg', '.jpeg']
+    }
   });
 
-  const processQueue = async () => {
-    if (uploadingRef.current) return;
-    uploadingRef.current = true;
-
-    const pendingFiles = files.filter(f => f.status === 'pending');
-    const uploadedMetadata: FileMetadata[] = [];
-
-    for (const file of pendingFiles) {
-      try {
-        setFiles(prev =>
-          prev.map(f =>
-            f.id === file.id ? { ...f, status: 'uploading' } : f
-          )
-        );
-
-        const metadata = await uploadFile(file.file);
-        uploadedMetadata.push(metadata);
-
-        setFiles(prev =>
-          prev.map(f =>
-            f.id === file.id
-              ? { ...f, status: 'uploaded', metadata, progress: 100 }
-              : f
-          )
-        );
-      } catch (error) {
-        setFiles(prev =>
-          prev.map(f =>
-            f.id === file.id
-              ? { ...f, status: 'error', error: error.message }
-              : f
-          )
-        );
-      }
-    }
-
-    uploadingRef.current = false;
-    if (onUploadComplete && uploadedMetadata.length > 0) {
-      onUploadComplete(uploadedMetadata);
-    }
+  const removeFile = (index: number) => {
+    setUploadedFiles((prev) => prev.filter((_, i) => i !== index));
   };
 
-  React.useEffect(() => {
-    if (files.some(f => f.status === 'pending')) {
-      processQueue();
-    }
-  }, [files]);
+  const uploadFiles = async () => {
+    if (uploadedFiles.length === 0) return;
 
-  const removeFile = (id: string) => {
-    setFiles(prev => prev.filter(f => f.id !== id));
+    setUploading(true);
+    let lastUploadedFileId = null;
+
+    try {
+      for (const file of uploadedFiles) {
+        const formData = new FormData();
+        formData.append('file', file);
+
+        const response = await axios.post(`${API_URL}/upload`, formData, {
+          onUploadProgress: (progressEvent) => {
+            if (progressEvent.total) {
+              const progress = Math.round(
+                (progressEvent.loaded * 100) / progressEvent.total
+              );
+              setUploadProgress((prev) => ({
+                ...prev,
+                [file.name]: progress
+              }));
+            }
+          }
+        });
+
+        lastUploadedFileId = response.data.fileId;
+        toast.success(`${file.name} uploaded successfully`);
+      }
+
+      // Clear the uploaded files
+      setUploadedFiles([]);
+      setUploadProgress({});
+
+      // Navigate to view component with the last uploaded file
+      if (lastUploadedFileId) {
+        navigate('/view', { 
+          state: { 
+            fileId: lastUploadedFileId,
+            newUpload: true
+          } 
+        });
+      }
+    } catch (error) {
+      console.error('Upload error:', error);
+      toast.error('Failed to upload file(s)');
+    } finally {
+      setUploading(false);
+    }
   };
 
   return (
-    <div className="w-full max-w-3xl mx-auto">
-      <div
-        {...getRootProps()}
-        className={`border-2 border-dashed rounded-lg p-8 text-center cursor-pointer transition-colors
-          ${isDragActive ? 'border-blue-500 bg-blue-50' : 'border-gray-300 hover:border-gray-400'}
-          ${files.length >= maxFiles ? 'opacity-50 cursor-not-allowed' : ''}`}
-        aria-label="File upload area"
-      >
-        <input {...getInputProps()} />
-        <div className="text-gray-600">
-          <svg
-            className="mx-auto h-12 w-12 text-gray-400"
-            stroke="currentColor"
-            fill="none"
-            viewBox="0 0 48 48"
-            aria-hidden="true"
-          >
-            <path
-              d="M24 8v24m0-24l-8 8m8-8l8 8m-8 16v-8"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </svg>
-          <p className="text-lg mt-4">Drag and drop your files here</p>
-          <p className="text-sm mt-2">or click to select files</p>
-          <p className="text-xs mt-2 text-gray-500">
-            (PDF and image files only, max {maxFiles} files)
-          </p>
+    <div className="space-y-6">
+      {/* User Guidance */}
+      <div className="bg-blue-50 border-l-4 border-blue-400 p-4">
+        <div className="flex">
+          <div className="flex-shrink-0">
+            <svg className="h-5 w-5 text-blue-400" viewBox="0 0 20 20" fill="currentColor">
+              <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+            </svg>
+          </div>
+          <div className="ml-3">
+            <p className="text-sm text-blue-700">
+              Drag and drop your PDF or image files here, or click to select files.
+              After upload, you'll be able to view and convert your documents.
+            </p>
+          </div>
         </div>
       </div>
 
-      {files.length > 0 && (
-        <div className="mt-6 space-y-4">
-          {files.map(file => (
+      {/* Dropzone */}
+      <div
+        {...getRootProps()}
+        className={`border-2 border-dashed rounded-lg p-8 text-center ${
+          isDragActive
+            ? 'border-indigo-500 bg-indigo-50'
+            : 'border-gray-300 hover:border-indigo-500'
+        }`}
+      >
+        <input {...getInputProps()} />
+        <div className="space-y-3">
+          <ArrowUpTrayIcon className="mx-auto h-12 w-12 text-gray-400" />
+          <p className="text-gray-600">
+            {isDragActive
+              ? 'Drop the files here...'
+              : 'Drag & drop files here, or click to select files'}
+          </p>
+          <p className="text-sm text-gray-500">PDF, PNG, JPG, JPEG</p>
+        </div>
+      </div>
+
+      {/* File List */}
+      {uploadedFiles.length > 0 && (
+        <div className="bg-white shadow-sm rounded-lg divide-y divide-gray-200">
+          {uploadedFiles.map((file, index) => (
             <div
-              key={file.id}
-              className="bg-white rounded-lg shadow-sm border p-4 flex items-center gap-4"
+              key={index}
+              className="p-4 flex items-center justify-between space-x-4"
             >
-              {/* File Type Icon */}
-              <div className="flex-shrink-0 w-10 h-10 flex items-center justify-center rounded-lg bg-gray-100">
-                {file.file.type === 'application/pdf' ? (
-                  <svg className="w-6 h-6 text-red-500" fill="currentColor" viewBox="0 0 20 20">
-                    <path d="M4 18h12a2 2 0 002-2V6a2 2 0 00-2-2h-3.93a2 2 0 01-1.66-.89l-.812-1.22A2 2 0 008.93 1H4a2 2 0 00-2 2v13a2 2 0 002 2z" />
-                  </svg>
-                ) : (
-                  <svg className="w-6 h-6 text-blue-500" fill="currentColor" viewBox="0 0 20 20">
-                    <path d="M4 3a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V5a2 2 0 00-2-2H4zm12 12H4l4-8 3 6 2-4 3 6z" />
-                  </svg>
-                )}
+              <div className="flex items-center space-x-4">
+                <DocumentIcon className="h-8 w-8 text-gray-400" />
+                <div>
+                  <p className="text-sm font-medium text-gray-900">{file.name}</p>
+                  <p className="text-sm text-gray-500">
+                    {(file.size / 1024 / 1024).toFixed(2)} MB
+                  </p>
+                </div>
               </div>
-
-              {/* File Info */}
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-gray-900 truncate">
-                  {file.file.name}
-                </p>
-                <p className="text-sm text-gray-500">
-                  {formatFileSize(file.file.size)} • {file.uploadedAt?.toLocaleTimeString()}
-                </p>
+              <div className="flex items-center space-x-4">
+                {uploadProgress[file.name] !== undefined && (
+                  <div className="w-32">
+                    <div className="bg-gray-200 rounded-full h-2">
+                      <div
+                        className="bg-indigo-600 h-2 rounded-full transition-all duration-500"
+                        style={{ width: `${uploadProgress[file.name]}%` }}
+                      ></div>
+                    </div>
+                  </div>
+                )}
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    removeFile(index);
+                  }}
+                  className="p-1 rounded-full hover:bg-gray-100"
+                >
+                  <XMarkIcon className="h-5 w-5 text-gray-500" />
+                </button>
               </div>
-
-              {/* Status */}
-              <div className="flex-shrink-0 ml-4">
-                {file.status === 'pending' && (
-                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
-                    Pending
-                  </span>
-                )}
-                {file.status === 'uploading' && (
-                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                    Uploading...
-                  </span>
-                )}
-                {file.status === 'uploaded' && (
-                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                    Uploaded
-                  </span>
-                )}
-                {file.status === 'error' && (
-                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
-                    Error
-                  </span>
-                )}
-              </div>
-
-              {/* Remove Button */}
-              <button
-                onClick={() => removeFile(file.id)}
-                className="flex-shrink-0 ml-2 text-gray-400 hover:text-gray-500"
-                aria-label="Remove file"
-              >
-                <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
-                  <path
-                    fillRule="evenodd"
-                    d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z"
-                    clipRule="evenodd"
-                  />
-                </svg>
-              </button>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Upload Button */}
+      {uploadedFiles.length > 0 && (
+        <div className="flex justify-end">
+          <button
+            onClick={uploadFiles}
+            disabled={uploading}
+            className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {uploading ? (
+              <>
+                <ArrowPathIcon className="h-5 w-5 mr-2 animate-spin" />
+                Uploading...
+              </>
+            ) : (
+              'Upload Files'
+            )}
+          </button>
         </div>
       )}
     </div>

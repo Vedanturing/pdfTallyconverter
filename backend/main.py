@@ -24,6 +24,8 @@ from concurrent.futures import ProcessPoolExecutor
 import logging
 import sys
 import traceback
+import uvicorn
+import mimetypes
 
 # Configure logging
 logging.basicConfig(
@@ -39,17 +41,17 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# Add GZip compression
-app.add_middleware(GZipMiddleware, minimum_size=1000)
-
-# Add CORS middleware
+# Add CORS middleware before any routes
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["http://localhost:5173"],  # Frontend URL
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Add GZip compression
+app.add_middleware(GZipMiddleware, minimum_size=1000)
 
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
@@ -280,10 +282,21 @@ def convert_file(file_path: str, file_id: str, output_formats: List[str] = ["xls
             xml_path = create_tally_xml(data, file_id)
             output_files['xml'] = xml_path
     
+    # Prepare data for frontend
+    headers = data.columns.tolist()
+    rows = []
+    for _, row in data.iterrows():
+        row_dict = {}
+        for col in headers:
+            row_dict[col] = str(row[col])
+        rows.append(row_dict)
+
     return {
         "status": "success",
         "message": "File converted successfully",
         "file_id": file_id,
+        "headers": headers,
+        "rows": rows,
         "converted_files": {
             format: f"/download/{os.path.basename(path)}"
             for format, path in output_files.items()
@@ -481,8 +494,249 @@ async def download_file(file_id: str, format: str):
         filename=f"corrected_data.{format}"
     )
 
+@app.get("/files")
+async def list_files():
+    """List all uploaded files"""
+    try:
+        files = []
+        for filename in os.listdir(UPLOAD_DIR):
+            file_path = os.path.join(UPLOAD_DIR, filename)
+            if os.path.isfile(file_path):
+                file_id = os.path.splitext(filename)[0]
+                file_stats = os.stat(file_path)
+                mime_type, _ = mimetypes.guess_type(filename)
+                
+                files.append({
+                    "id": file_id,
+                    "name": filename,
+                    "type": mime_type or "application/octet-stream",
+                    "size": file_stats.st_size,
+                    "uploadedAt": datetime.fromtimestamp(file_stats.st_mtime).isoformat(),
+                    "url": f"/files/{filename}"
+                })
+        
+        return {
+            "status": "success",
+            "files": sorted(files, key=lambda x: x["uploadedAt"], reverse=True)
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/files/{filename}")
+async def serve_file(filename: str):
+    """Serve an uploaded file"""
+    file_path = os.path.join(UPLOAD_DIR, filename)
+    if not os.path.exists(file_path):
+        raise HTTPException(status_code=404, detail="File not found")
+    
+    mime_type, _ = mimetypes.guess_type(filename)
+    return FileResponse(
+        file_path,
+        media_type=mime_type or "application/octet-stream",
+        filename=filename
+    )
+
+def validate_table(data: List[List[str]]) -> List[Dict]:
+    """Validate table data and return validation results"""
+    validation_results = []
+    
+    for row_idx, row in enumerate(data):
+        for col_idx, cell in enumerate(row):
+            # Skip header row
+            if row_idx == 0:
+                continue
+                
+            # Validate empty mandatory fields
+            if not cell.strip() and col_idx in [0, 1, 2]:  # Assuming first 3 columns are mandatory
+                validation_results.append({
+                    "row": row_idx,
+                    "column": col_idx,
+                    "type": "error",
+                    "severity": "critical",
+                    "message": "Mandatory field cannot be empty"
+                })
+            
+            # Validate numeric values
+            if col_idx in [3, 4]:  # Assuming columns 4 and 5 should be numeric
+                try:
+                    float(cell.replace(',', '').strip())
+                except ValueError:
+                    validation_results.append({
+                        "row": row_idx,
+                        "column": col_idx,
+                        "type": "error",
+                        "severity": "critical",
+                        "message": "Value must be numeric"
+                    })
+            
+            # Validate date format
+            if col_idx == 2:  # Assuming column 3 is date
+                try:
+                    datetime.strptime(cell.strip(), '%Y-%m-%d')
+                except ValueError:
+                    validation_results.append({
+                        "row": row_idx,
+                        "column": col_idx,
+                        "type": "error",
+                        "severity": "warning",
+                        "message": "Invalid date format (should be YYYY-MM-DD)"
+                    })
+            
+            # Check for common OCR errors
+            if any(char in cell for char in ['O0', 'l1', 'S5']):
+                validation_results.append({
+                    "row": row_idx,
+                    "column": col_idx,
+                    "type": "warning",
+                    "severity": "info",
+                    "message": "Possible OCR confusion (O/0, l/1, S/5)"
+                })
+    
+    return validation_results
+
+@app.get("/validate-data")
+async def validate_data():
+    """Validate the current data and return validation results"""
+    try:
+        # Load the current data
+        data_file = os.path.join(CONVERTED_DIR, "latest.json")
+        if not os.path.exists(data_file):
+            raise HTTPException(status_code=404, detail="No data available for validation")
+        
+        with open(data_file, 'r') as f:
+            data = json.load(f)
+        
+        # Validate the data
+        validation_results = validate_table(data['rows'])
+        
+        return {
+            "status": "success",
+            "data": data,
+            "validation": validation_results
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/save-edits")
+async def save_edits(request: Request):
+    """Save edited data and export in multiple formats"""
+    try:
+        body = await request.json()
+        original_data = body['originalData']
+        modified_data = body['modifiedData']
+        edit_history = body['editHistory']
+        
+        # Save the modified data
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        base_filename = f"corrected_{timestamp}"
+        
+        # Save as JSON
+        json_path = os.path.join(CORRECTED_DIR, f"{base_filename}.json")
+        with open(json_path, 'w') as f:
+            json.dump({
+                'data': modified_data,
+                'editHistory': edit_history
+            }, f, indent=2)
+        
+        # Convert to DataFrame
+        rows = []
+        for row in modified_data['rows']:
+            row_data = {}
+            for header in modified_data['headers']:
+                row_data[header] = row['cells'][header]['value']
+            rows.append(row_data)
+        df = pd.DataFrame(rows)
+        
+        # Save as Excel
+        excel_path = os.path.join(CORRECTED_DIR, f"{base_filename}.xlsx")
+        df.to_excel(excel_path, index=False)
+        
+        # Save as CSV
+        csv_path = os.path.join(CORRECTED_DIR, f"{base_filename}.csv")
+        df.to_csv(csv_path, index=False)
+        
+        # Generate Tally XML
+        root = ET.Element('ENVELOPE')
+        msg = ET.SubElement(root, 'TALLYMESSAGE')
+        for row in rows:
+            voucher = ET.SubElement(msg, 'VOUCHER')
+            for key, value in row.items():
+                elem = ET.SubElement(voucher, key.upper().replace(' ', '_'))
+                elem.text = str(value)
+        
+        xml_path = os.path.join(CORRECTED_DIR, f"{base_filename}.xml")
+        tree = ET.ElementTree(root)
+        tree.write(xml_path, encoding='utf-8', xml_declaration=True)
+        
+        return {
+            "status": "success",
+            "files": {
+                "json": json_path,
+                "excel": excel_path,
+                "csv": csv_path,
+                "xml": xml_path
+            }
+        }
+    except Exception as e:
+        logger.error(f"Error saving edits: {str(e)}\n{traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/exports")
+async def list_exports():
+    """List all exported files"""
+    try:
+        files = []
+        for filename in os.listdir(CORRECTED_DIR):
+            if not filename.startswith('corrected_'):
+                continue
+                
+            base_name = os.path.splitext(filename)[0]
+            base_path = os.path.join(CORRECTED_DIR, base_name)
+            
+            # Get stats from any of the exported files (using .json as reference)
+            json_path = f"{base_path}.json"
+            if not os.path.exists(json_path):
+                continue
+                
+            file_stats = os.stat(json_path)
+            
+            # Check which formats are available
+            formats = {}
+            for ext in ['json', 'xlsx', 'csv', 'xml']:
+                file_path = f"{base_path}.{ext}"
+                if os.path.exists(file_path):
+                    formats[ext.replace('xlsx', 'excel')] = f"/exports/{base_name}.{ext}"
+            
+            files.append({
+                "id": base_name,
+                "name": base_name.replace('corrected_', ''),
+                "type": "application/json",
+                "size": file_stats.st_size,
+                "createdAt": datetime.fromtimestamp(file_stats.st_mtime).isoformat(),
+                "formats": formats
+            })
+        
+        return {
+            "status": "success",
+            "files": sorted(files, key=lambda x: x["createdAt"], reverse=True)
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/exports/{filename}")
+async def serve_export(filename: str):
+    """Serve an exported file"""
+    file_path = os.path.join(CORRECTED_DIR, filename)
+    if not os.path.exists(file_path):
+        raise HTTPException(status_code=404, detail="File not found")
+    
+    mime_type, _ = mimetypes.guess_type(filename)
+    return FileResponse(
+        file_path,
+        media_type=mime_type or "application/octet-stream",
+        filename=filename
+    )
+
 if __name__ == "__main__":
-    import uvicorn
-    port = int(os.environ.get("PORT", 8000))
-    uvicorn.run(app, host="0.0.0.0", port=port, workers=4) 
+    uvicorn.run("main:app", host="0.0.0.0", port=3001, reload=True) 
     

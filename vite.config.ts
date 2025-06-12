@@ -5,12 +5,24 @@ import path from 'path';
 export default defineConfig({
   plugins: [react()],
   server: {
-    port: 3000
+    port: 5173,
+    proxy: {
+      '/api': {
+        target: 'http://localhost:5174',
+        changeOrigin: true,
+        secure: false,
+        rewrite: (path) => path.replace(/^\/api/, '')
+      }
+    }
   },
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src')
     }
+  },
+  css: {
+    postcss: './postcss.config.cjs',
+    devSourcemap: true
   },
   build: {
     outDir: 'dist',
@@ -22,6 +34,12 @@ export default defineConfig({
       }
     }
   },
-  // Base path for GitHub Pages deployment - matches repository name
-  base: '/pdfTallyConverter/'
-}); 
+  worker: {
+    format: 'es'
+  },
+  optimizeDeps: {
+    include: ['pdfjs-dist']
+  },
+  base: '/'
+});
+
