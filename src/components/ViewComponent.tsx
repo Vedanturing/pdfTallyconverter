@@ -220,6 +220,13 @@ const ViewComponent: React.FC = () => {
     });
   };
 
+  const handleConvert = async () => {
+    if (!selectedFile) return;
+    
+    const conversionToast = toast.loading('Converting document...');
+    await convertFile(selectedFile, conversionToast);
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
@@ -412,15 +419,35 @@ const ViewComponent: React.FC = () => {
       )}
 
       {/* Action Buttons */}
-      {selectedFile && convertedData.length > 0 && (
-        <div className="flex justify-end space-x-4">
-          <button
-            onClick={handleProceed}
-            className="inline-flex items-center px-6 py-3 border border-transparent text-base font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-colors duration-200"
-          >
-            <ArrowDownTrayIcon className="ml-2 h-5 w-5" />
-            Confirm & Convert
-          </button>
+      {selectedFile && (
+        <div className="flex justify-end mt-6 space-x-4">
+          {convertedData.length === 0 ? (
+            <button
+              onClick={handleConvert}
+              disabled={conversionLoading}
+              className="inline-flex items-center px-6 py-3 border border-transparent text-base font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {conversionLoading ? (
+                <>
+                  <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-3" />
+                  Converting...
+                </>
+              ) : (
+                <>
+                  <ArrowRightIcon className="mr-2 h-5 w-5" />
+                  Convert Document
+                </>
+              )}
+            </button>
+          ) : (
+            <button
+              onClick={handleProceed}
+              className="inline-flex items-center px-6 py-3 border border-transparent text-base font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-colors duration-200"
+            >
+              <ArrowDownTrayIcon className="mr-2 h-5 w-5" />
+              Proceed to Export
+            </button>
+          )}
         </div>
       )}
     </div>
