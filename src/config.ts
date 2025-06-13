@@ -1,4 +1,4 @@
-export const API_URL = '/api';
+export const API_URL = 'http://localhost:3001';
 
 export const SUPPORTED_FILE_TYPES = {
   'application/pdf': ['.pdf'],

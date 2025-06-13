@@ -2,10 +2,10 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
 import './index.css';
-import { setupPdfjs } from './utils/pdfjs-setup';
+import { initPdfWorker } from './utils/pdfjs-config';
 
-// Initialize PDF.js
-setupPdfjs();
+// Initialize PDF.js worker
+initPdfWorker();
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>

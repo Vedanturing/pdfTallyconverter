@@ -1,6 +1,6 @@
 import { FileMetadata } from '../types/file';
 
-const API_BASE_URL = 'http://localhost:8000';
+const API_BASE_URL = 'http://localhost:3001';
 
 export async function uploadFile(file: File, onProgress?: (progress: number) => void): Promise<FileMetadata> {
   const formData = new FormData();

@@ -6,9 +6,10 @@ import {
   ClipboardDocumentCheckIcon,
 } from '@heroicons/react/24/outline';
 import { CheckCircleIcon } from '@heroicons/react/24/solid';
+import { WorkflowStep } from '../store/useWorkflowStore';
 
 interface WorkflowStepperProps {
-  currentStep: 'upload' | 'view' | 'convert' | 'edit';
+  currentStep: WorkflowStep;
 }
 
 const steps = [
@@ -19,7 +20,7 @@ const steps = [
     icon: CloudArrowUpIcon,
   },
   {
-    id: 'view',
+    id: 'preview',
     name: 'Preview',
     description: 'Review document',
     icon: DocumentMagnifyingGlassIcon,
@@ -31,15 +32,22 @@ const steps = [
     icon: ArrowDownTrayIcon,
   },
   {
-    id: 'edit',
+    id: 'validate',
     name: 'Validate',
     description: 'Check & edit data',
     icon: ClipboardDocumentCheckIcon,
   },
-];
+] as const;
 
 const WorkflowStepper: React.FC<WorkflowStepperProps> = ({ currentStep }) => {
-  const currentStepIndex = steps.findIndex((step) => step.id === currentStep);
+  const getStepStatus = (stepId: WorkflowStep) => {
+    const currentIndex = steps.findIndex(s => s.id === currentStep);
+    const stepIndex = steps.findIndex(s => s.id === stepId);
+    
+    if (stepIndex < currentIndex) return 'complete';
+    if (stepIndex === currentIndex) return 'current';
+    return 'upcoming';
+  };
 
   return (
     <div className="py-6">
@@ -47,8 +55,9 @@ const WorkflowStepper: React.FC<WorkflowStepperProps> = ({ currentStep }) => {
         <nav aria-label="Progress">
           <ol role="list" className="flex items-center">
             {steps.map((step, stepIdx) => {
-              const isCurrentStep = step.id === currentStep;
-              const isCompleted = steps.findIndex(s => s.id === currentStep) > stepIdx;
+              const status = getStepStatus(step.id);
+              const isCompleted = status === 'complete';
+              const isCurrent = status === 'current';
 
               return (
                 <li
@@ -69,7 +78,7 @@ const WorkflowStepper: React.FC<WorkflowStepperProps> = ({ currentStep }) => {
                         className={`relative z-10 flex h-8 w-8 items-center justify-center rounded-full ${
                           isCompleted
                             ? 'bg-indigo-600'
-                            : isCurrentStep
+                            : isCurrent
                             ? 'border-2 border-indigo-600 bg-white'
                             : 'border-2 border-gray-300 bg-white'
                         }`}
@@ -79,7 +88,7 @@ const WorkflowStepper: React.FC<WorkflowStepperProps> = ({ currentStep }) => {
                         ) : (
                           <step.icon
                             className={`h-5 w-5 ${
-                              isCurrentStep ? 'text-indigo-600' : 'text-gray-500'
+                              isCurrent ? 'text-indigo-600' : 'text-gray-500'
                             }`}
                             aria-hidden="true"
                           />
@@ -89,14 +98,14 @@ const WorkflowStepper: React.FC<WorkflowStepperProps> = ({ currentStep }) => {
                     <div className="ml-4 min-w-0">
                       <span
                         className={`text-sm font-medium ${
-                          isCompleted || isCurrentStep ? 'text-indigo-600' : 'text-gray-500'
+                          isCompleted || isCurrent ? 'text-indigo-600' : 'text-gray-500'
                         }`}
                       >
                         {step.name}
                       </span>
                       <p
                         className={`text-sm ${
-                          isCompleted || isCurrentStep ? 'text-gray-900' : 'text-gray-500'
+                          isCompleted || isCurrent ? 'text-gray-900' : 'text-gray-500'
                         }`}
                       >
                         {step.description}

@@ -1,24 +1,57 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
+import fs from 'fs';
+
+// Copy PDF.js worker to public directory
+const workerPath = path.resolve(__dirname, 'node_modules/pdfjs-dist/build/pdf.worker.min.js');
+const publicWorkerPath = path.resolve(__dirname, 'public/pdf.worker.min.js');
+
+if (!fs.existsSync('public')) {
+  fs.mkdirSync('public');
+}
+
+if (fs.existsSync(workerPath)) {
+  fs.copyFileSync(workerPath, publicWorkerPath);
+}
 
 export default defineConfig({
   plugins: [react()],
   server: {
-    port: 5173,
+    port: 5175,
+    host: true,
+    cors: true,
+    headers: {
+      'Cross-Origin-Opener-Policy': 'same-origin',
+      'Cross-Origin-Embedder-Policy': 'require-corp',
+    },
     proxy: {
       '/api': {
-        target: 'http://localhost:5174',
+        target: 'http://localhost:3001',
         changeOrigin: true,
         secure: false,
-        rewrite: (path) => path.replace(/^\/api/, '')
+      },
+      '/upload': {
+        target: 'http://localhost:3001',
+        changeOrigin: true,
+        secure: false,
+      },
+      '/convert': {
+        target: 'http://localhost:3001',
+        changeOrigin: true,
+        secure: false,
+      },
+      '/file': {
+        target: 'http://localhost:3001',
+        changeOrigin: true,
+        secure: false,
       }
     }
   },
   resolve: {
     alias: {
-      '@': path.resolve(__dirname, './src')
-    }
+      '@': path.resolve(__dirname, './src'),
+    },
   },
   css: {
     postcss: './postcss.config.cjs',
@@ -32,13 +65,16 @@ export default defineConfig({
       input: {
         main: path.resolve(__dirname, 'index.html')
       }
-    }
+    },
+    commonjsOptions: {
+      include: [/node_modules/],
+    },
+  },
+  optimizeDeps: {
+    include: ['react-pdf', 'pdfjs-dist']
   },
   worker: {
     format: 'es'
-  },
-  optimizeDeps: {
-    include: ['pdfjs-dist']
   },
   base: '/'
 });

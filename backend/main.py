@@ -44,7 +44,12 @@ app = FastAPI(
 # Add CORS middleware before any routes
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],  # Frontend URL
+    allow_origins=[
+        "http://localhost:5173",
+        "http://localhost:5174",
+        "http://localhost:5175",
+        "http://localhost:3000"
+    ],  # Frontend URLs
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -736,6 +741,26 @@ async def serve_export(filename: str):
         media_type=mime_type or "application/octet-stream",
         filename=filename
     )
+
+@app.get("/file/{file_id}")
+async def get_file(file_id: str):
+    """Get file by ID"""
+    # Check all possible file extensions
+    for ext in ['.pdf', '.png', '.jpg', '.jpeg']:
+        file_path = os.path.join(UPLOAD_DIR, f"{file_id}{ext}")
+        if os.path.exists(file_path):
+            # Get the MIME type based on file extension
+            mime_type, _ = mimetypes.guess_type(file_path)
+            if not mime_type:
+                mime_type = 'application/octet-stream'
+            
+            return FileResponse(
+                file_path,
+                media_type=mime_type,
+                filename=os.path.basename(file_path)
+            )
+    
+    raise HTTPException(status_code=404, detail="File not found")
 
 if __name__ == "__main__":
     uvicorn.run("main:app", host="0.0.0.0", port=3001, reload=True) 

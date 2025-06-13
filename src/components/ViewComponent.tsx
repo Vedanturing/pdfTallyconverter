@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import axios from 'axios';
 import { Document, Page, pdfjs } from 'react-pdf';
 import { API_URL } from '../config';
@@ -10,14 +10,13 @@ import {
   TableCellsIcon,
   DocumentTextIcon,
   DocumentIcon,
+  ArrowDownTrayIcon,
 } from '@heroicons/react/24/outline';
 import toast from 'react-hot-toast';
 import { useNavigate, useLocation } from 'react-router-dom';
 import WorkflowStepper from './WorkflowStepper';
 import FinancialTable from './FinancialTable';
-
-// Set up PDF.js worker
-pdfjs.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.min.js`;
+import { initPdfWorker, cleanupPdfWorker } from '../utils/pdfjs-config';
 
 interface FinancialEntry {
   id: string;
@@ -39,34 +38,97 @@ const ViewComponent: React.FC = () => {
   const [convertedData, setConvertedData] = useState<FinancialEntry[]>([]);
   const [activeTab, setActiveTab] = useState<'document' | 'table'>('document');
   const [conversionLoading, setConversionLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const navigate = useNavigate();
   const location = useLocation();
+  const currentBlobUrl = useRef<string | null>(null);
+  const isMounted = useRef(true);
 
+  // Initialize PDF worker when component mounts
   useEffect(() => {
-    fetchFiles();
-    // Check if we have a newly uploaded file
-    const state = location.state as { fileId?: string; newUpload?: boolean };
-    if (state?.fileId) {
-      setSelectedFile(state.fileId);
-      handleFileSelect(state.fileId);
-      if (state.newUpload) {
-        // Automatically convert newly uploaded files
-        convertFile(state.fileId);
+    initPdfWorker();
+    return () => {
+      cleanupPdfWorker();
+    };
+  }, []);
+
+  const loadFile = useCallback(async (fileId: string) => {
+    if (!isMounted.current) return;
+    
+    setLoading(true);
+    setError(null);
+    setFileUrl(null); // Clear previous file URL
+
+    // Cleanup previous blob URL if it exists
+    if (currentBlobUrl.current) {
+      window.URL.revokeObjectURL(currentBlobUrl.current);
+      currentBlobUrl.current = null;
+    }
+
+    try {
+      console.log('Fetching file with ID:', fileId);
+      const response = await axios.get(`${API_URL}/file/${fileId}`, {
+        responseType: 'blob'
+      });
+      
+      if (!isMounted.current) return;
+
+      const type = response.headers['content-type'];
+      const isPdf = type === 'application/pdf';
+      setFileType(isPdf ? 'pdf' : 'image');
+      
+      const blob = new Blob([response.data], { type });
+      const url = window.URL.createObjectURL(blob);
+      currentBlobUrl.current = url;
+      
+      // Small delay to ensure cleanup is complete
+      setTimeout(() => {
+        if (isMounted.current) {
+          setFileUrl(url);
+          setPageNumber(1);
+        }
+      }, 100);
+    } catch (error) {
+      if (!isMounted.current) return;
+      
+      console.error('Error loading file:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Failed to load file';
+      setError(errorMessage);
+      toast.error(errorMessage);
+      navigate('/', { replace: true });
+    } finally {
+      if (isMounted.current) {
+        setLoading(false);
       }
     }
-  }, [location.state]);
+  }, [navigate]);
 
-  const fetchFiles = async () => {
-    try {
-      const response = await axios.get(`${API_URL}/files`);
-      setFiles(response.data.files);
-    } catch (error) {
-      console.error('Error fetching files:', error);
-      toast.error('Failed to load files');
-    } finally {
-      setLoading(false);
+  useEffect(() => {
+    isMounted.current = true;
+    
+    const state = location.state as { fileId?: string; newUpload?: boolean };
+    
+    if (!state?.fileId) {
+      const error = 'No file selected';
+      console.error(error);
+      setError(error);
+      toast.error(error);
+      navigate('/', { replace: true });
+      return;
     }
-  };
+
+    setSelectedFile(state.fileId);
+    loadFile(state.fileId);
+
+    return () => {
+      isMounted.current = false;
+      
+      if (currentBlobUrl.current) {
+        window.URL.revokeObjectURL(currentBlobUrl.current);
+        currentBlobUrl.current = null;
+      }
+    };
+  }, [location.state, navigate, loadFile]);
 
   const handleFileSelect = async (fileId: string) => {
     setSelectedFile(fileId);
@@ -94,28 +156,53 @@ const ViewComponent: React.FC = () => {
     }
   };
 
-  const convertFile = async (fileId: string) => {
+  const convertFile = async (fileId: string, conversionToast?: string) => {
     setConversionLoading(true);
     try {
-      const response = await axios.get(`${API_URL}/convert`, {
-        params: { fileId }
-      });
-      setConvertedData(response.data.rows.map((row: any, index: number) => ({
-        id: `row-${index}`,
-        ...row
-      })));
-      setActiveTab('table'); // Switch to table view after conversion
+      console.log('Converting file with ID:', fileId);
+      const response = await axios.post(`${API_URL}/convert/${fileId}`);
+      console.log('Conversion response:', response.data);
+      
+      if (response.data.rows) {
+        setConvertedData(response.data.rows.map((row: any, index: number) => ({
+          id: `row-${index}`,
+          ...row
+        })));
+        setActiveTab('table'); // Switch to table view after conversion
+      }
+      
+      if (conversionToast) {
+        toast.success('Document converted successfully', {
+          id: conversionToast
+        });
+      }
     } catch (error) {
       console.error('Error converting file:', error);
-      toast.error('Failed to convert file');
+      if (conversionToast) {
+        toast.error('Failed to convert document', {
+          id: conversionToast
+        });
+      } else {
+        toast.error('Failed to convert file');
+      }
     } finally {
       setConversionLoading(false);
     }
   };
 
-  const onDocumentLoadSuccess = ({ numPages }: { numPages: number }) => {
+  const onDocumentLoadSuccess = useCallback(({ numPages }: { numPages: number }) => {
+    console.log('PDF loaded successfully with', numPages, 'pages');
     setNumPages(numPages);
-  };
+    setLoading(false);
+    setError(null);
+  }, []);
+
+  const onDocumentLoadError = useCallback((error: Error) => {
+    console.error('Error loading PDF:', error);
+    setError(error.message);
+    setLoading(false);
+    toast.error('Failed to load PDF document');
+  }, []);
 
   const changePage = (offset: number) => {
     if (!numPages) return;
@@ -125,28 +212,41 @@ const ViewComponent: React.FC = () => {
     }
   };
 
-  const handleConfirmAndConvert = () => {
-    if (!selectedFile) {
-      toast.error('Please select a file first');
-      return;
-    }
-    
-    if (!convertedData || convertedData.length === 0) {
-      toast.error('Please wait for the conversion to complete');
-      return;
-    }
-
+  const handleProceed = () => {
+    const state = location.state as { fileId?: string };
     navigate('/convert', { 
-      state: { 
-        fileId: selectedFile,
-        data: convertedData 
-      } 
+      state: { fileId: state.fileId },
+      replace: true
     });
   };
 
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500" />
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[400px] text-red-500">
+        <p className="text-lg font-medium mb-4">Error loading document</p>
+        <p className="text-sm">{error}</p>
+      </div>
+    );
+  }
+
+  console.log('Rendering preview section:', {
+    fileUrl,
+    fileType,
+    selectedFile,
+    convertedData: convertedData.length
+  });
+
   return (
-    <div className="space-y-6">
-      <WorkflowStepper currentStep="view" />
+    <div className="container mx-auto px-4 py-8">
+      <WorkflowStepper currentStep="preview" />
 
       {/* User Guidance */}
       <div className="bg-blue-50 border-l-4 border-blue-400 p-4 rounded-r-md shadow-sm">
@@ -244,40 +344,43 @@ const ViewComponent: React.FC = () => {
                           <Document
                             file={fileUrl}
                             onLoadSuccess={onDocumentLoadSuccess}
+                            onLoadError={onDocumentLoadError}
                             loading={
-                              <div className="flex items-center justify-center h-64">
-                                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
+                              <div className="flex items-center justify-center min-h-[400px]">
+                                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500" />
                               </div>
                             }
+                            options={{
+                              disableWorker: false,
+                              disableRange: false,
+                              disableStream: false
+                            }}
                           >
                             <Page
                               pageNumber={pageNumber}
                               renderTextLayer={false}
                               renderAnnotationLayer={false}
-                              className="max-w-full h-auto"
                             />
                           </Document>
                         </div>
                         {numPages && numPages > 1 && (
-                          <div className="flex items-center justify-center space-x-4 mt-4">
+                          <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 flex items-center space-x-4 bg-white/80 backdrop-blur-sm rounded-full px-4 py-2 shadow-sm">
                             <button
                               onClick={() => changePage(-1)}
                               disabled={pageNumber <= 1}
-                              className="inline-flex items-center px-3 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200"
+                              className="p-1 rounded-full hover:bg-gray-100 disabled:opacity-50"
                             >
-                              <ChevronLeftIcon className="h-5 w-5 mr-1" />
-                              Previous
+                              <ChevronLeftIcon className="h-5 w-5" />
                             </button>
-                            <span className="text-sm text-gray-600">
+                            <span className="text-sm">
                               Page {pageNumber} of {numPages}
                             </span>
                             <button
                               onClick={() => changePage(1)}
                               disabled={pageNumber >= numPages}
-                              className="inline-flex items-center px-3 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200"
+                              className="p-1 rounded-full hover:bg-gray-100 disabled:opacity-50"
                             >
-                              Next
-                              <ChevronRightIcon className="h-5 w-5 ml-1" />
+                              <ChevronRightIcon className="h-5 w-5" />
                             </button>
                           </div>
                         )}
@@ -312,11 +415,11 @@ const ViewComponent: React.FC = () => {
       {selectedFile && convertedData.length > 0 && (
         <div className="flex justify-end space-x-4">
           <button
-            onClick={handleConfirmAndConvert}
+            onClick={handleProceed}
             className="inline-flex items-center px-6 py-3 border border-transparent text-base font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-colors duration-200"
           >
+            <ArrowDownTrayIcon className="ml-2 h-5 w-5" />
             Confirm & Convert
-            <ArrowRightIcon className="ml-2 h-5 w-5" />
           </button>
         </div>
       )}

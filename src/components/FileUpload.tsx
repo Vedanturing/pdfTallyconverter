@@ -1,14 +1,8 @@
-import { useCallback, useState, lazy } from 'react';
+import { useCallback, useState } from 'react';
 import { useDropzone } from 'react-dropzone';
 import axios from 'axios';
 import toast, { Toaster } from 'react-hot-toast';
-
-// Lazy load PDF.js
-const loadPdfJs = async () => {
-  const pdfjsLib = await import('pdfjs-dist');
-  pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
-  return pdfjsLib;
-};
+import { API_URL } from '../config';
 
 interface FilePreview {
   file: File;
@@ -34,7 +28,7 @@ const FileUpload: React.FC<FileUploadProps> = ({ onFileUpload }) => {
     formData.append('file', file);
 
     try {
-      const response = await axios.post('http://localhost:8000/upload', formData, {
+      const response = await axios.post(`${API_URL}/upload`, formData, {
         headers: {
           'Content-Type': 'multipart/form-data',
         },
@@ -80,9 +74,8 @@ const FileUpload: React.FC<FileUploadProps> = ({ onFileUpload }) => {
 
     if (file.type === 'application/pdf') {
       try {
-        // Only load PDF.js when needed
-        const pdfjsLib = await loadPdfJs();
         const arrayBuffer = await file.arrayBuffer();
+        const pdfjsLib = await import('pdfjs-dist');
         const pdf = await pdfjsLib.getDocument(arrayBuffer).promise;
         const page = await pdf.getPage(1);
         const viewport = page.getViewport({ scale: 1.0 });

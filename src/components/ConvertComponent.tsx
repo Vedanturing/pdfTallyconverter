@@ -8,10 +8,12 @@ import {
   XCircleIcon,
   ArrowRightIcon,
   TableCellsIcon,
+  DocumentIcon,
 } from '@heroicons/react/24/outline';
 import toast from 'react-hot-toast';
 import { useNavigate, useLocation } from 'react-router-dom';
 import WorkflowStepper from './WorkflowStepper';
+import { useWorkflowStore } from '../store/useWorkflowStore';
 
 interface ConversionStatus {
   status: 'pending' | 'processing' | 'completed' | 'failed';
@@ -33,7 +35,7 @@ const EXPORT_FORMATS: ExportFormat[] = [
     name: 'Excel Spreadsheet',
     extension: 'xlsx',
     icon: TableCellsIcon,
-    description: 'Export as Microsoft Excel file for spreadsheet applications'
+    description: 'Export as Microsoft Excel file'
   },
   {
     id: 'csv',
@@ -46,8 +48,8 @@ const EXPORT_FORMATS: ExportFormat[] = [
     id: 'xml',
     name: 'XML Document',
     extension: 'xml',
-    icon: DocumentArrowDownIcon,
-    description: 'Export as XML for structured data interchange'
+    icon: DocumentIcon,
+    description: 'Export as XML for structured data'
   }
 ];
 
@@ -64,6 +66,7 @@ const ConvertComponent: React.FC = () => {
   const [convertedFormats, setConvertedFormats] = useState<Set<string>>(new Set());
   const navigate = useNavigate();
   const location = useLocation();
+  const { setStep } = useWorkflowStore();
 
   const availableFormats = [
     { id: 'xlsx', name: 'Excel (XLSX)', icon: '📊', description: 'Best for data analysis and calculations' },
@@ -73,12 +76,12 @@ const ConvertComponent: React.FC = () => {
 
   useEffect(() => {
     fetchFiles();
-    // If fileId is passed from ViewComponent, select it
     const state = location.state as { fileId?: string };
-    if (state?.fileId) {
-      setSelectedFile(state.fileId);
+    if (!state?.fileId) {
+      toast.error('No file selected');
+      navigate('/', { replace: true });
     }
-  }, [location.state]);
+  }, [location.state, navigate]);
 
   const fetchFiles = async () => {
     try {
@@ -179,27 +182,24 @@ const ConvertComponent: React.FC = () => {
   };
 
   const handleExport = async (format: string) => {
-    if (!selectedFile) {
+    const state = location.state as { fileId?: string };
+    if (!state?.fileId) {
       toast.error('No file selected');
       return;
     }
 
-    setConverting(true);
     setSelectedFormat(format);
-
     try {
       const response = await axios.get(`${API_URL}/convert`, {
         params: { 
-          fileId: selectedFile,
+          fileId: state.fileId,
           format
         },
         responseType: 'blob'
       });
 
-      // Add to converted formats
       setConvertedFormats(prev => new Set([...prev, format]));
       
-      // Trigger download
       const blob = new Blob([response.data], { 
         type: format === 'xlsx' 
           ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
@@ -217,11 +217,14 @@ const ConvertComponent: React.FC = () => {
       window.URL.revokeObjectURL(url);
 
       toast.success(`Successfully exported as ${format.toUpperCase()}`);
+      navigate('/validate', { 
+        state: { fileId: state.fileId },
+        replace: true
+      });
     } catch (error) {
       console.error('Export error:', error);
       toast.error(`Failed to export as ${format.toUpperCase()}`);
     } finally {
-      setConverting(false);
       setSelectedFormat(null);
     }
   };
